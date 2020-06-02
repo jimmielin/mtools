@@ -1,0 +1,3 @@
+[submodule "wrf-gc/GCC_ICBC"]
+	path = wrf-gc/GCC_ICBC
+	url = https://github.com/fengx7/WRF-GC-GCC_ICBC

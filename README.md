@@ -29,3 +29,4 @@ including the possible danger of caffeine overdose, late nights, and generally d
 ## Useful packages (dependencies)
 * **M_map**: https://www.eoas.ubc.ca/~rich/map.html
 * Othercolor: https://www.mathworks.com/matlabcentral/fileexchange/30564-othercolor
+* subplot_tight: https://www.mathworks.com/matlabcentral/fileexchange/30884-controllable-tight-subplot

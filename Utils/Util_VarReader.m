@@ -14,7 +14,7 @@
 %
 % Based off original WRF-GC script by xfeng <fengx7@pku.edu.cn>
 %
-% Version: 2021.09.13
+% Version: 2021.09.28
 % See changelog at end of script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -51,7 +51,7 @@ format         = 'cesm'; % wrf, cesm, gcclassic
 % filename: specify a FORMAT string where %d will be formatted
 % to the index of given fslice_bounds. e.g., "test_%02d.nc", will be "test_01.nc",
 % "test_02.nc", ...
-filename       = 'FCSD_GEOSChem.cam.h0.2016-2016._%02d_climo.nc';
+filename       = 'FCSD_CAMChem.cam.h0.2016-2016._%02d_climo.nc';
 
 % if mode == index: specify bounds for index (e.g. 1:12.) row vector only.
 fslice_bounds  = 1:12;
@@ -77,7 +77,7 @@ num_days       = datenum(endyr,endmon,enddate) - datenum(startyr,startmon,startd
 fout_coords = 'coords_CESM.mat';
 
 % fout: output file name (all data will be saved to one file)
-fout = 'climo_CESM2GCYearlyMonthlyAvg_2016.mat';
+fout = 'climo_CAMchemYearlyMonthlyAvg_2016.mat';
 
 % z_save [int]
 % specify z-levels to save (for 3-D data), with level 1 being SURFACE
@@ -90,9 +90,13 @@ z_save = 56;
 % variables to save
 % vars_in_2D|3D will specify the variables that need to be read, with their
 % original netCDF names...
-vars_in_2D = [];
+%
+% for many tools in mtools, the surface pressure and temperature are
+% required. please store them in PSFC and T
+vars_in_2D = ["PS", "LNO_COL_PROD", "DF_CO", "DF_O3"];
 %vars_in_3D = ["O3", "NO", "NO2", "JvalO3O3P", "JvalO3O1D", "Jval_NO2", "Jval_CH2O"];
-vars_in_3D = ["O3", "NO", "NO2", "CO"];%, "jo3_b", "jo3_a", "jno2", "jch2o_b", "jch2o_a"];
+vars_in_3D = ["T", "O3", "NO", "NO2", "CO", "OH", "HO2", "SO2", "ISOP", "CH2O", "CLOUD", ...
+    "BRO", "CLO", "HCL", "HOCL", "CH3CL", "N2O", "PAN"];%, "jo3_b", "jo3_a", "jno2", "jch2o_b", "jch2o_a"];
 
 % vars_out_2D|3D will CORRESPONDINGLY rename these variables to be saved
 % to the output (fout) file.
@@ -102,8 +106,9 @@ vars_in_3D = ["O3", "NO", "NO2", "CO"];%, "jo3_b", "jo3_a", "jno2", "jch2o_b", "
 %
 % (I have no business policing the variable names written below;
 %  this is "on the other side of the airtight hatchway")
-vars_out_2D = [];
-vars_out_3D = ["O3", "NO", "NO2", "CO"];% "JO3O3P", "JO3O1D", "JNO2", "JCH2O", "JCH2O_a"];
+vars_out_2D = ["PSFC", "LNO_COL_PROD", "DryDepCO", "DryDepO3"];
+vars_out_3D = ["T", "O3", "NO", "NO2", "CO", "OH", "HO2", "SO2", "ISOP", "CH2O", "CLDFRC" ...
+    "BRO", "CLO", "HCL", "HOCL", "CH3CL", "N2O", "PAN"];% "JO3O3P", "JO3O1D", "JNO2", "JCH2O", "JCH2O_a"];
 
 %%%%%%%%%%%%%%%%%%%%%% NO USER CONFIGURABLE CODE BELOW %%%%%%%%%%%%%%%%%%%%
 
@@ -136,6 +141,7 @@ elseif strcmp(mode, 'once')
     fslices = 1;
 elseif strcmp(mode, 'index')
     fslices = size(fslice_bounds, 2);
+    filename_format_string = filename; % save this for later use
 end
         
 i = 0;
@@ -187,14 +193,39 @@ end
 lons = ncread(filename_spec, 'lon');
 lats = ncread(filename_spec, 'lat');
 levs = ncread(filename_spec, 'lev');
-levs = flip(levs); % this is in Pa for CESM format
+
+% check if we need to flip the vertical. this is so that TOA is always the
+% highest indexed level, by convention in mtools
+if levs(1) < levs(2)
+    levs = flip(levs);
+    do_flip_vert = true; 
+    fprintf("Notice: levels were found as TOA = level 1 in input file. By convention in this set of tools, the vertical has been flipped so that coordinates face up.\n");
+else
+    do_flip_vert = false;
+end
+
+% check if units need to be corrected for the levs variable. in CESM,
+% levs(1) is ~999 (101 kPa), unit is hPa. for GC, it is 1.000.
+% TODO
+
+% read hyai, hybi, hybm, hyam.
+% warning: this may not always be available. TODO check
+hyai = ncread(filename_spec, 'hyai');
+hybi = ncread(filename_spec, 'hybi');
+hyam = ncread(filename_spec, 'hyam');
+hybm = ncread(filename_spec, 'hybm');
+
+if do_flip_vert == true
+    hyai = flip(hyai); hybi = flip(hybi);
+    hyam = flip(hyam); hybm = flip(hybm);
+end
 
 if size(levs, 1) < z_save
     fprintf("WARNING: z_save > max levs. Setting as max available.\n")
     z_save = size(levs, 1);
 end
 
-save(fout_coords, "lons", "lats", "levs");
+save(fout_coords, "lons", "lats", "levs", "hyai", "hybi", "hyam", "hybm");
 fprintf("Util_VarReader.m: Saved coordinates to %s\n", fout_coords);
 
 %% read variables: 3-D vars
@@ -216,12 +247,18 @@ for i = 1:length(vars_in_3D)
         if strcmp(mode, 'daily') || strcmp(mode, 'hourly')
             filename = [prefixname,date_str(tt,:),suffixname];
         elseif strcmp(mode, 'index')
-            filename = sprintf(filename, fslice_bounds(tt));
+            filename = sprintf(filename_format_string, fslice_bounds(tt));
+            fprintf("reading %s, fslice %d, %d\n", filename, tt, fslice_bounds(tt));
         end
         %disp(filename);
         tmp(:,:,:,tt) = ncread(filename,spiename);
     end
-    tmp3D = tmp(:,:,zdim:-1:(zdim-z_save+1),:);
+    
+    if do_flip_vert == true
+        tmp3D = tmp(:,:,zdim:-1:(zdim-z_save+1),:);
+    else
+        tmp3D = tmp(:,:,1:z_save,:);
+    end
     
     % copy to out... DANGER
     eval(sprintf('%s=tmp3D;', spiename_out));
@@ -246,7 +283,7 @@ for i = 1:length(vars_in_2D)
         if strcmp(mode, 'daily') || strcmp(mode, 'hourly')
             filename = [prefixname,date_str(tt,:),suffixname];
         elseif strcmp(mode, 'index')
-            filename = sprintf(filename, fslice_bounds(tt));
+            filename = sprintf(filename_format_string, fslice_bounds(tt));
         end
         %disp(filename);
         tmp(:,:,tt) = ncread(filename,spiename);
@@ -257,6 +294,18 @@ for i = 1:length(vars_in_2D)
 
     fprintf("[ OK ] Read %s => %s, dim'l: %d x %d (2D)\n", spiename, spiename_out, xdim, ydim);
 end
+
+if ~any(strcmp(vars_out_3D, 'T'))
+    fprintf("\nWARNING: You did not save a temperature field 'T' in 3-D fields. If you use mtools to process data further, some computations may fail.\n")
+    fprintf("Try to save out a temperature 3-D field in the 'T' variable.\n\n");
+end
+
+if ~any(strcmp(vars_out_2D, 'PSFC'))
+    fprintf("\nWARNING: You did not save a surface pressure 'PSFC' field in 2-D fields. If you use mtools to process data further, some computations may fail.\n")
+    fprintf("Try to save out a surface pressure 2-D field in the 'PSFC' variable.\n\n");
+end
+
+fprintf("Wait now... Writing files to disk.\n");
 
 if isempty(vars_out_2D)
     save(fout, vars_out_3D{:});

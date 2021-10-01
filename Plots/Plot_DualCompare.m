@@ -62,11 +62,13 @@ handling_right = "cesm-circshift";
 %       fourth_idx is /usually/ a date slice.
 %
 % 
-file = load('climo_CAMchemYearlyMonthlyAvg_2016.mat');
-data_left = file.yearly_O3;
-
 file = load('climo_CESM2GCYearlyMonthlyAvg_2016.mat');
-data_right = file.O3;
+%data_left = file.NO + file.NO2;
+data_left = file.O3;
+
+file = load('climo_CAMchemYearlyMonthlyAvg_2016.mat');
+%data_right = file.yearly_NO + file.yearly_NO2;
+data_right = file.yearly_O3;
 
 % specify plot properties
 %
@@ -77,15 +79,17 @@ data_right = file.O3;
 % left_name:   source of left data
 % right_name:  source of right data
 title_nice     = "2016 monthly average - %s - level %d - date slice %d";
-var_nice_name  = "O3 [ppb]";
+var_name       = "O3";
+var_nice_name  = strcat(var_name, " [ppb]");
 
-left_name      = "CAM-chem";
-right_name     = "CESM2-GC";
+left_name      = "CESM2-GC";
+right_name     = "CAM-chem";
 
 % specify data indexing properties
 %
 % third_idx: /usually/ level. for CESM 56-levels, 23 is ~500 hPa.
-%            magic number -1 will make it "column sum" (summed over index)
+           * if set to -1, will output column sums in [molec/cm3]
+%            * if set to -2, will output column sums in [kg]
 % fourth_idx: usually date slice
 %
 % WARNING: IF DATA IS GIVEN IN 3-DIMENSIONAL ARRAY, USUALLY FOR 2-D DATA
@@ -93,11 +97,12 @@ right_name     = "CESM2-GC";
 % BECAUSE IT USUALLY MEANS IT IS 2-D DATA, AND FOURTH_IDX IS DATE SLICE BY
 % CONVENTION.
 third_idx =  1; % level index
-fourth_idx = 4; % date index
+fourth_idx = 1; % date index
 
 % specify data scaling properties
 %
 % usually for ozone, 1e9 to convert to ppb.
+% for upper trop. NO2, 1e12 to convert to ppt.
 % otherwise, 1
 convert_factor = 1e9;
 
@@ -115,7 +120,7 @@ convert_factor = 1e9;
 %   /species |------------------------------------------------------|
 % -----------|                                                      |
 %      O3    | 60 ppb, d. 18 |  90 ppb, d. 20   |   2.4e5, d. 3e4   |
-%     NO2    | 10 ppb, d.4.5 |
+%     NO2    | 12 ppb, d.4.5 | [ppt] 40, d. 36 |
 %   J-O3O1D  |  0.000012,d/2 |
 %   J-O3O3P  |  0.0006  ,d/2 |
 %   J-NO2    |  0.006   ,d/2 |
@@ -123,13 +128,16 @@ convert_factor = 1e9;
 %            |  d. 000045    |
 % -------------------------------------------------------------------
 
+% maxDynRange = 60;
+% maxDynRangeCmp = 18;
+% distRatioCmp = 0.5;
+
 maxDynRange = 60;
 maxDynRangeCmp = 18;
 distRatioCmp = 0.5;
 
-% maxDynRange = 12;
-% maxDynRangeCmp = 4.5;
-% distRatioCmp = 0.5;
+% save file? will auto save a file. the figure will still pop up
+do_save = 1;
 
 
 
@@ -329,3 +337,12 @@ set(findall(gcf,'type','text'), 'FontSize', 14);
 %set(gcf, 'Renderer', 'painters', 'Position', [90 90 1800 500])
 
 set(gcf, 'Renderer', 'painters', 'Position', [90 0 1250 970]);
+
+
+if do_save == 1
+    fname = sprintf("%s_vs_%s_%s_date%02d_level%02d.png", left_name, right_name, var_name, fourth_idx, third_idx);
+    
+    saveas(gcf, fname);
+    close(gcf);
+    fprintf("=> Saved figure to %s\n", fname);
+end

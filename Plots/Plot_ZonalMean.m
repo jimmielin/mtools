@@ -59,11 +59,12 @@ handling_right = "cesm-circshift";
 %       fourth_idx is /usually/ a date slice.
 %
 % 
-file = load('climo_CAMchemYearlyMonthlyAvg_2016.mat');
-data_left = file.yearly_O3;
-
 file = load('climo_CESM2GCYearlyMonthlyAvg_2016.mat');
-data_right = file.O3;
+data_left = file.O3;
+
+file = load('climo_CAMchemYearlyMonthlyAvg_2016.mat');
+data_right = file.yearly_O3;
+
 
 % specify plot properties
 %
@@ -76,8 +77,8 @@ data_right = file.O3;
 title_nice     = "2016 monthly average - %s - level %d - date slice %d";
 var_nice_name  = "O3 [ppb]";
 
-left_name      = "CAM-chem";
-right_name     = "CESM2-GC";
+left_name      = "CESM2-GC";
+right_name     = "CAM-chem";
 
 % specify data indexing properties
 %
@@ -90,7 +91,7 @@ right_name     = "CESM2-GC";
 % BECAUSE IT USUALLY MEANS IT IS 2-D DATA, AND FOURTH_IDX IS DATE SLICE BY
 % CONVENTION.
 third_idx =  1; % level index
-fourth_idx = 4; % date index
+fourth_idx = 10; % date index
 
 % specify data scaling properties
 %
@@ -105,6 +106,11 @@ convert_factor = 1e9;
 % surface, vert_bottom is set to 1000 hPa
 vert_top = 10;
 vert_bottom = 1000;
+
+% max dynamic range
+minDynRange = 10;
+maxDynRange = 100;
+maxDynRangeCmp = 30;
 
 %%%%%%%%%%%%%%%%%%%%%% NO USER CONFIGURABLE CODE BELOW %%%%%%%%%%%%%%%%%%%%
 
@@ -143,7 +149,7 @@ end
 
 
 % plot zonal mean given data, lat, lev, ASSUMING RECTILINEARITY
-ax1 = subplot(1,3,1);
+ax1 = subplot(1,4,1);
 
 lats_plt = squeeze(lats_left(1,:));
 levs_plt = squeeze(levs_left); % 0.999 sfc: 999 hPa conversion may be needed
@@ -158,12 +164,12 @@ if levs_plt(1) > levs_plt(2) % TOA is top level, flip the axis to make matlab ha
     levs_plt = flip(levs_plt);
 end
 
-contourf(lats_plt, levs_plt, data_plt_zNy, linspace(0, 10000, 10));
+contourf(lats_plt, levs_plt, data_plt_zNy, linspace(minDynRange, maxDynRange, 10));
 set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca,'YScale', 'log');
 colorbar;
-colormap(ax1, flip(othercolor('BuDRd_12', 10)));
+colormap(ax1, (othercolor('BuDRd_12', 9)));
 xlabel("Latitude [deg]");
 ylabel("Pressure [hPa]");
 title(left_name);
@@ -181,7 +187,7 @@ set(findall(gcf,'type','text'), 'FontSize', 14);
 
 
 %%%%%%%%%%
-ax2 = subplot(1,3,2);
+ax2 = subplot(1,4,2);
 
 lats_plt = squeeze(lats_right(1,:));
 levs_plt = squeeze(levs_right);
@@ -196,12 +202,12 @@ if levs_plt(1) > levs_plt(2) % TOA is top level, flip the axis to make matlab ha
     levs_plt = flip(levs_plt);
 end
 
-contourf(lats_plt, levs_plt, data_plt_zNy, linspace(0, 10000, 10));
+contourf(lats_plt, levs_plt, data_plt_zNy, linspace(minDynRange, maxDynRange, 10));
 set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca,'YScale', 'log');
 colorbar;
-colormap(ax2, flip(othercolor('BuDRd_12', 10)));
+colormap(ax2, (othercolor('BuDRd_12', 9)));
 xlabel("Latitude [deg]");
 ylabel("Pressure [hPa]");
 title(right_name);
@@ -223,7 +229,7 @@ set(findall(gcf,'type','text'), 'FontSize', 14);
 %%%%%%%%%%%
 % DO DELTA, IF POSSIBLE
 if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
-    ax2 = subplot(1,3,3);
+    ax2 = subplot(1,4,3);
 
     lats_plt = squeeze(lats_right(1,:));
     levs_plt = squeeze(levs_right);
@@ -238,7 +244,7 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
         levs_plt = flip(levs_plt);
     end
 
-    contourf(lats_plt, levs_plt, data_plt_zNy, linspace(-90, 90, 9));
+    contourf(lats_plt, levs_plt, data_plt_zNy, linspace(-maxDynRangeCmp, maxDynRangeCmp, 9));
     set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca,'YScale', 'log');
@@ -248,7 +254,7 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
     ylabel("Pressure [hPa]");
     title("Delta [L-R]");
     
-    caxis([-90 90]);
+    caxis([-maxDynRangeCmp maxDynRangeCmp]);
 
     ylim([vert_top vert_bottom]); % 1 hPa is OK
     yticks(flip(vert_bottom:-100:vert_top));
@@ -261,6 +267,48 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
     set(findall(gcf,'type','text'), 'FontWeight', 'normal');
     set(findall(gcf,'type','text'), 'FontSize', 14);
+    
+    
+    ax2 = subplot(1,4,4);
+
+    lats_plt = squeeze(lats_right(1,:));
+    levs_plt = squeeze(levs_right);
+    data_plt_xyz = (data_left(:,:,:,fourth_idx) ./ data_right(:,:,:,fourth_idx));
+
+    % collapse data by lats
+    data_plt_yz = squeeze(sum(data_plt_xyz)) / size(data_plt_xyz, 1); % sums over 1st dimension and avgd.
+    % this results in lats, levs which needs to be transposed
+    data_plt_zNy = flip(transpose(data_plt_yz), 1); % flip the vertical direction HACK so axes are TOA-up
+
+    if levs_plt(1) > levs_plt(2) % TOA is top level, flip the axis to make matlab happy
+        levs_plt = flip(levs_plt);
+    end
+
+    contourf(lats_plt, levs_plt, data_plt_zNy, linspace(0.5, 1.5, 10));
+    set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
+    set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
+    set(gca,'YScale', 'log');
+    colorbar;
+    colormap(ax2, flip(othercolor('RdBu11', 11)));
+    xlabel("Latitude [deg]");
+    ylabel("Pressure [hPa]");
+    title("Delta [L/R]");
+    
+    caxis([0.5 1.5]);
+
+    ylim([vert_top vert_bottom]); % 1 hPa is OK
+    yticks(flip(vert_bottom:-100:vert_top));
+    xticks(linspace(-90, 90, 7));
+    
+    % Set font properties...
+    set(gca, 'FontName', 'Arial');
+    set(gca, 'FontWeight', 'normal');
+    set(gca, 'FontSize', 14);
+    set(findall(gcf,'type','text'), 'FontName', 'Arial');
+    set(findall(gcf,'type','text'), 'FontWeight', 'normal');
+    set(findall(gcf,'type','text'), 'FontSize', 14);
+    
+    
 end
 
 sgtitle(sprintf(title_nice, var_nice_name, third_idx, fourth_idx));
@@ -277,4 +325,4 @@ set(findall(gcf,'type','text'), 'FontSize', 14);
 %set(gcf, 'PaperUnits', 'inches', 'PaperPosition', [0 0 12 10]);
 %set(gcf, 'Renderer', 'painters', 'Position', [90 90 1800 500])
 
-set(gcf, 'Renderer', 'painters', 'Position', [600 800 1800 580]);
+set(gcf, 'Renderer', 'painters', 'Position', [600 800 1900 580]);

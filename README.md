@@ -24,7 +24,11 @@ This package was developed during my personal time. It is licensed under MIT, wh
 However, I remind that I do not assume any sort of warranty, express or implied, for the use of this package,
 including the possible danger of caffeine overdose, late nights, and generally debugging frustration.
 
-(c) 2021 Haipeng Lin <jimmie.lin@gmail.com>
+(c) 2021-2022 Haipeng Lin <work@Jimmielin.me>
+
+## Save your eyes and use this
+* https://github.com/scottclowe/matlab-schemer
+
 
 ## Useful packages (dependencies)
 * **M_map**: https://www.eoas.ubc.ca/~rich/map.html

@@ -14,7 +14,7 @@
 %
 % Based off original WRF-GC script by xfeng <fengx7@pku.edu.cn>
 %
-% Version: 2021.09.28
+% Version: 2022.09.14
 % See changelog at end of script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -51,7 +51,9 @@ format         = 'cesm'; % wrf, cesm, gcclassic
 % filename: specify a FORMAT string where %d will be formatted
 % to the index of given fslice_bounds. e.g., "test_%02d.nc", will be "test_01.nc",
 % "test_02.nc", ...
-filename       = 'FCSD_CAMChem.cam.h0.2016-2016._%02d_climo.nc';
+% filename       = 'FCSD_CAMChem.cam.h0.2016-2016._%02d_climo.nc';
+% filename = '/media/hplin/ACMG2/CESM2GC_Lin_2022/C1_MEIC_KORUS_20160101_18moSpinup/CESM2-GC/f19_f19_mg17/run/2208_cesm-gc_2.1-f19SD_2016.cam.h0.2016-%02d.nc';
+filename = '/media/hplin/ACMG2/CESM2GC_Lin_2022/C1_MEIC_KORUS_20160101_18moSpinup/CAM-chem/f09_f09_mg17/run/2209_cam-chem_2.2-f09SD_2016.cam.h0.2016-%02d.nc';
 
 % if mode == index: specify bounds for index (e.g. 1:12.) row vector only.
 fslice_bounds  = 1:12;
@@ -68,16 +70,16 @@ startyr        = 2016;
 endyr          = 2016;
 startmon       = 5;
 endmon         = 5;
-startdate      = 1; 
+startdate      = 1;
 enddate        = 30;
 num_days       = datenum(endyr,endmon,enddate) - datenum(startyr,startmon,startdate) + 1;
 
 % fout_coords: output file name for coordinates spec
 % will save lons, lats, levs
-fout_coords = 'coords_CESM.mat';
+fout_coords = 'mdl_coords_CESM_f09_f09_mg17.mat';
 
 % fout: output file name (all data will be saved to one file)
-fout = 'climo_CAMchemYearlyMonthlyAvg_2016.mat';
+fout = 'mdl_cesm2.2camchem_2016_monthly.mat';
 
 % z_save [int]
 % specify z-levels to save (for 3-D data), with level 1 being SURFACE
@@ -93,10 +95,27 @@ z_save = 56;
 %
 % for many tools in mtools, the surface pressure and temperature are
 % required. please store them in PSFC and T
-vars_in_2D = ["PS", "LNO_COL_PROD", "DF_CO", "DF_O3"];
-%vars_in_3D = ["O3", "NO", "NO2", "JvalO3O3P", "JvalO3O1D", "Jval_NO2", "Jval_CH2O"];
-vars_in_3D = ["T", "O3", "NO", "NO2", "CO", "OH", "HO2", "SO2", "ISOP", "CH2O", "CLOUD", ...
-    "BRO", "CLO", "HCL", "HOCL", "CH3CL", "N2O", "PAN"];%, "jo3_b", "jo3_a", "jno2", "jch2o_b", "jch2o_a"];
+vars_in_2D = ["PS", "LNO_COL_PROD", "DF_CO", "DF_O3", "DF_NO2"];
+
+% CESM-GC - uppercase vars
+% vars_in_3D = ["T", "NOX", "NOY", "CH2O", "CO", "BR", "BRO", "CLO", "CL", ...
+%               "HCL", "HBR", "HOCL", "HOBR", "CH3CL", "BRCL", "BRNO3", "CLNO3", ...
+%               "HO2", "H2O2", "OH", "CH4", "PM25", "O3", ...
+%               "SO2", ...
+%               "NO", "NO2", "PAN", "HNO3", "NO3", "N2O", "N2O5", "HNO4", ...
+%               "MOH", "EOH", "ALD2", "C3H8", "DMS", "ACET", "MEK", "MVK", "TOLU", "MACR", "ALK4", "RCHO", "ISOP", ...
+%               "bc_a1", "bc_a4", "dst_a1", "dst_a2", "dst_a3", "SO4", "pom_a1", "pom_a4", ...
+%               "JvalO3O3P", "JvalO3O1D", "Jval_NO2", "Jval_H2O2", "Jval_PAN", "Jval_Cl2O2"];
+
+% CAM-chem - uppercase vars
+vars_in_3D = ["T", "NOX", "NOY", "CH2O", "CO", "BR", "BRO", "CLO", "CL", ...
+              "HCL", "HBR", "HOCL", "HOBR", "CH3CL", "BRCL", ...
+              "HO2", "H2O2", "OH", "CH4", "PM25", "O3", ...
+              "SO2", ...
+              "NO", "NO2", "PAN", "HNO3", "NO3", "N2O", "N2O5",  ...
+              "CH3OH", "C2H5OH", "CH3CHO", "C3H8", "DMS", "CH3COCH3", "MEK", "MVK", "TOLUENE", "MACR", "BIGALK", "ISOP", ...
+              "bc_a1", "bc_a4", "dst_a1", "dst_a2", "dst_a3", "so4_a1", "so4_a2", "so4_a3", "pom_a1", "pom_a4", ...
+              "jo3_b", "jo3_a", "jh2o2", "jpan", "jcl2o2"];
 
 % vars_out_2D|3D will CORRESPONDINGLY rename these variables to be saved
 % to the output (fout) file.
@@ -106,9 +125,26 @@ vars_in_3D = ["T", "O3", "NO", "NO2", "CO", "OH", "HO2", "SO2", "ISOP", "CH2O", 
 %
 % (I have no business policing the variable names written below;
 %  this is "on the other side of the airtight hatchway")
-vars_out_2D = ["PSFC", "LNO_COL_PROD", "DryDepCO", "DryDepO3"];
-vars_out_3D = ["T", "O3", "NO", "NO2", "CO", "OH", "HO2", "SO2", "ISOP", "CH2O", "CLDFRC" ...
-    "BRO", "CLO", "HCL", "HOCL", "CH3CL", "N2O", "PAN"];% "JO3O3P", "JO3O1D", "JNO2", "JCH2O", "JCH2O_a"];
+vars_out_2D = ["PSFC", "LNO_COL_PROD", "DryDepCO", "DryDepO3", "DryDepNO2"];
+% vars_out_3D = ["T", "NOx", "NOy", "CH2O", "CO", "Br", "BrO", "ClO", "Cl", ...
+%               "HCl", "HBr", "HOCl", "HOBr", "CH3Cl", "BrCl", "BrNO3", "ClNO3", ...
+%               "HO2", "H2O2", "OH", "CH4", "PM25", "O3", ...
+%               "SO2", ...
+%               "NO", "NO2", "PAN", "HNO3", "NO3", "N2O", "N2O5", "HNO4", ...
+%               "MOH", "EOH", "ALD2", "C3H8", "DMS", "ACET", "MEK", "MVK", "TOLU", "MACR", "ALK4", "RCHO", "ISOP", ...
+%               "BCPI", "BCPO", "dst_a1", "dst_a2", "DST4", "SO4", "OCPI", "OCPO", ...
+%               "JvalO3O3P", "JvalO3O1D", "Jval_NO2", "Jval_H2O2", "Jval_PAN", "Jval_Cl2O2"];
+
+% CAM-chem - lowercase vars. some are missing
+vars_out_3D = ["T", "NOx", "NOy", "CH2O", "CO", "Br", "BrO", "ClO", "Cl", ...
+              "HCl", "HBr", "HOCl", "HOBr", "CH3Cl", "BrCl", ...
+              "HO2", "H2O2", "OH", "CH4", "PM25", "O3", ...
+              "SO2", ...
+              "NO", "NO2", "PAN", "HNO3", "NO3", "N2O", "N2O5", ...
+              "MOH", "EOH", "ALD2", "C3H8", "DMS", "ACET", "MEK", "MVK", "TOLU", "MACR", "ALK4", "ISOP", ...
+              "BCPI", "BCPO", "dst_a1", "dst_a2", "DST4", "so4_a1", "so4_a2", "so4_a3", "OCPI", "OCPO", ...
+              "JvalO3O3P", "JvalO3O1D", "Jval_H2O2", "Jval_PAN", "Jval_Cl2O2"];
+
 
 %%%%%%%%%%%%%%%%%%%%%% NO USER CONFIGURABLE CODE BELOW %%%%%%%%%%%%%%%%%%%%
 
@@ -143,7 +179,7 @@ elseif strcmp(mode, 'index')
     fslices = size(fslice_bounds, 2);
     filename_format_string = filename; % save this for later use
 end
-        
+
 i = 0;
 if strcmp(mode, 'daily') || strcmp(mode, 'hourly')
     for mm = datenum(startyr,startmon,startdate):datenum(endyr,endmon,enddate)
@@ -159,7 +195,7 @@ if strcmp(mode, 'daily') || strcmp(mode, 'hourly')
             datestd(i,4) = 0; % always 0-hour. change for slicing
         end
     end
-    
+
     fslices = size(datestd,1);
 end
 
@@ -170,7 +206,7 @@ if strcmp(format, 'cesm') == true
         formatOut = 'yyyy-mm-dd-00000';
         date_str = datestr(datestd,formatOut);
     end
-    
+
     if strcmp(mode, 'hourly') == true
         % not implemented %
         error("format cesm and mode hourly is not supported (yet)");
@@ -198,7 +234,7 @@ levs = ncread(filename_spec, 'lev');
 % highest indexed level, by convention in mtools
 if levs(1) < levs(2)
     levs = flip(levs);
-    do_flip_vert = true; 
+    do_flip_vert = true;
     fprintf("Notice: levels were found as TOA = level 1 in input file. By convention in this set of tools, the vertical has been flipped so that coordinates face up.\n");
 else
     do_flip_vert = false;
@@ -232,7 +268,7 @@ fprintf("Util_VarReader.m: Saved coordinates to %s\n", fout_coords);
 for i = 1:length(vars_in_3D)
     spiename = vars_in_3D(i);
     spiename_out = vars_out_3D(i);
-    
+
     if strcmp(mode, 'index')
         tmp = ncread(filename_spec, spiename);
     else
@@ -253,13 +289,13 @@ for i = 1:length(vars_in_3D)
         %disp(filename);
         tmp(:,:,:,tt) = ncread(filename,spiename);
     end
-    
+
     if do_flip_vert == true
         tmp3D = tmp(:,:,zdim:-1:(zdim-z_save+1),:);
     else
         tmp3D = tmp(:,:,1:z_save,:);
     end
-    
+
     % copy to out... DANGER
     eval(sprintf('%s=tmp3D;', spiename_out));
 
@@ -269,7 +305,7 @@ end
 for i = 1:length(vars_in_2D)
     spiename = vars_in_2D(i);
     spiename_out = vars_out_2D(i);
-    
+
     if strcmp(mode, 'index')
         tmp = ncread(filename_spec, spiename);
     else
@@ -288,7 +324,7 @@ for i = 1:length(vars_in_2D)
         %disp(filename);
         tmp(:,:,tt) = ncread(filename,spiename);
     end
-    
+
     % copy to out... DANGER
     eval(sprintf('%s=tmp;', spiename_out));
 
@@ -315,4 +351,15 @@ else
     save(fout, vars_out_2D{:}, vars_out_3D{:});
 end
 
+
+% sanity check for mapping.
+for i = 1:length(vars_in_3D)
+    spiename = vars_in_3D(i);
+    spiename_out = vars_out_3D(i);
+    fprintf("%-12s maps to %-12s,\n", spiename, spiename_out);
+end
+
 fprintf("Util_VarReader.m: Saved out fields to %s ... file slices %d\n", fout, fslices)
+
+% Changelog:
+% 2022/09/14: add sanity check for mapping; qol improvements

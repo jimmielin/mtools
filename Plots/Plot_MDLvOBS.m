@@ -12,7 +12,7 @@
 % Plot model outputs against observations (ground)
 % (c) 2019-2022 Haipeng Lin <work@jimmielin.me>
 %
-% Version: 2022.09.13
+% Version: 2022.09.28
 % See changelog at end of script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -20,7 +20,7 @@
 % Metadata - will be used to get species data (magic) as well
 % meta_title: %d inserts date slice, %s inserts species name
 var_name     = "O3";
-meta_title   = "2016 monthly average - date slice %d - species %s";
+meta_title   = "2016 monthly average - date slice %d - species %s [China MEP]";
 
 % Input data files
 mdl_filename = 'mdl_cesm2.1gc13.4.1_2016_monthly.mat';
@@ -29,6 +29,9 @@ coords_CESM_f19_f19_mg17 = load("mdl_coords_CESM_f19_f19_mg17.mat");
 
 obs_chn     = load("obs_chinamep_ground/2016_hourly_all.mat");
 obs_kor     = load("obs_airkorea_ground/2016_hourly_all.mat");
+
+% figure output location (no trailing underscore needed)
+figure_out_prefix = "out_figures/cesm2.1gc13.4.1_2016_chinamep";
 
 % specify data indexing properties
 %
@@ -72,6 +75,12 @@ mdl_handling = "cesm-circshift";
 % specify data scaling properties (generally does not need change)
 % in CESM, VMR is in 1 so convert to ppm in 1e6
 convert_factor = 1e6;
+
+% Mode:
+% - closest_model_for_obs - for each observation point find closest model
+% grid box.
+% - average_obs_over_model - average observational points over model
+compare_mode = "average_obs_over_model";
 
 %% No user configurable options below
 % month end
@@ -138,13 +147,7 @@ else
     error("size of mdl_data is neither 3-D or 4-D. what is going on?");
 end
 
-%% Now data is subsliced into mdl_data.
-% Compare against observations. Loop for each observational data point...
-
-% warn: heap alloc
-serial_set_obs = [];
-serial_set_mdl = [];
-
+% create averaged observations if needed, for monthly
 if obs_mode == "averaged"
     % build monthly average. to make more generic later
     % find beginning and end time indices
@@ -154,51 +157,90 @@ if obs_mode == "averaged"
     obs_data = nanmean(obs_data_slice, 2);
 end
 
-% expects that data in obs_data is now 1d
-for obs_siteidx = 1:1:obs_current.sitenum
-    site  = obs_current.sites(obs_siteidx, 1);
-    slong = obs_current.sites(obs_siteidx, 2);
-    slat  = obs_current.sites(obs_siteidx, 3);
+% Now data is subsliced into mdl_data(i, j)
+serial_set_obs = [];
+serial_set_mdl = [];
+
+if compare_mode == "closest_model_for_obs"
+    % Compare against observations. Loop for each observational data point...
     
-    % prelim filter out stations with NaN data
-    if isnan(obs_data(obs_siteidx, 1))
-        continue
+    % expects that data in obs_data is now 1d
+    for obs_siteidx = 1:1:obs_current.sitenum
+        site  = obs_current.sites(obs_siteidx, 1);
+        slong = obs_current.sites(obs_siteidx, 2);
+        slat  = obs_current.sites(obs_siteidx, 3);
+        
+        % prelim filter out stations with NaN data
+        if isnan(obs_data(obs_siteidx, 1))
+            continue
+        end
+        %fprintf("Site IntID %d, SiteID %6d, Long x Lat %f x %f\n", obs_siteidx, site, slong, slat);
+    
+        % This assumes rectilinearity in xlat, xlong, also not very efficient as
+        % it goes to the end of the loop
+        ddmax = 360;
+        di = 1;
+        dj = 1;
+        for i = 1:size(mdl_coords_lon, 1)
+            if abs(mdl_coords_lon(i,1)-slong) < ddmax
+                ddmax = abs(mdl_coords_lon(i,1)-slong);
+                di = i;
+            end
+        end
+    
+        ddmax = 180;
+        for j = 1:size(mdl_coords_lat, 2)
+            if abs(mdl_coords_lat(1,j)-slat) < ddmax
+                ddmax = abs(mdl_coords_lat(1,j)-slat);
+                dj = j;
+            end
+        end
+    
+        % disallow ddmax by threshold because if it is too far it has no
+        % meaning (0.01 deg ~ 1 km)
+        if ddmax > 0.1
+            continue
+        end
+    
+        %fprintf("=> Closest grid box i,j,mdl_long,mdl_lat = %d, %d, %f, %f\n", di, dj, mdl_coords_lon(di,dj), mdl_coords_lat(di,dj));
+    
+        % Now that the site is pinpointed, compare against the corresponding
+        % mdl_data(i,j), which has been converted to ug/m3 (pm) or ppm (others)
+        serial_set_obs = [serial_set_obs; obs_data(obs_siteidx, 1)];
+        serial_set_mdl = [serial_set_mdl; mdl_data(di, dj)];
+      
     end
-    %fprintf("Site IntID %d, SiteID %6d, Long x Lat %f x %f\n", obs_siteidx, site, slong, slat);
-
-    % This assumes rectilinearity in xlat, xlong, also not very efficient as
-    % it goes to the end of the loop
-    ddmax = 360;
-    di = 1;
-    dj = 1;
+elseif compare_mode == "average_obs_over_model"
+    % loop for each grid box...
+    % measure deltas. assume some rectilinearity here given these are
+    % lat/lon centers
+    dlon = abs(mdl_coords_lon(2,1) - mdl_coords_lon(1,1));
+    dlat = abs(mdl_coords_lat(1,2) - mdl_coords_lat(1,1));
     for i = 1:size(mdl_coords_lon, 1)
-        if abs(mdl_coords_lon(i,1)-slong) < ddmax
-            ddmax = abs(mdl_coords_lon(i,1)-slong);
-            di = i;
+        for j = 1:size(mdl_coords_lat, 2)
+            % find obs to average... this could be more efficient
+            averaged_obs = [];
+            for obs_siteidx = 1:1:obs_current.sitenum
+                site  = obs_current.sites(obs_siteidx, 1);
+                slong = obs_current.sites(obs_siteidx, 2);
+                slat  = obs_current.sites(obs_siteidx, 3);
+
+                % are we in grid box? check
+                if slong >= mdl_coords_lon(i,j)-dlon && slong <=mdl_coords_lon(i,j)+dlon && ...
+                        slat >=mdl_coords_lat(i,j)-dlat && slat<=mdl_coords_lat(i,j)+dlat
+                    averaged_obs = [averaged_obs; obs_data(obs_siteidx, 1)];
+                end
+            end
+            
+            obs_count = size(averaged_obs, 1);
+            if obs_count > 0
+                averaged_obs = nanmean(averaged_obs);
+                serial_set_obs = [serial_set_obs; averaged_obs];
+                serial_set_mdl = [serial_set_mdl; mdl_data(i, j)];
+                fprintf("=> found %d observations in %d, %d\n", obs_count, i, j);
+            end
         end
     end
-
-    ddmax = 180;
-    for j = 1:size(mdl_coords_lat, 2)
-        if abs(mdl_coords_lat(1,j)-slat) < ddmax
-            ddmax = abs(mdl_coords_lat(1,j)-slat);
-            dj = j;
-        end
-    end
-
-    % disallow ddmax by threshold because if it is too far it has no
-    % meaning (0.01 deg ~ 1 km)
-    if ddmax > 0.1
-        continue
-    end
-
-    %fprintf("=> Closest grid box i,j,mdl_long,mdl_lat = %d, %d, %f, %f\n", di, dj, mdl_coords_lon(di,dj), mdl_coords_lat(di,dj));
-
-    % Now that the site is pinpointed, compare against the corresponding
-    % mdl_data(i,j), which has been converted to ug/m3 (pm) or ppm (others)
-    serial_set_obs = [serial_set_obs; obs_data(obs_siteidx, 1)];
-    serial_set_mdl = [serial_set_mdl; mdl_data(di, dj)];
-  
 end
 
 %% Make plot
@@ -224,7 +266,7 @@ dummy_xs = linspace(0, 1, 100);
 yCalc2 = dummy_xs * b(2) + b(1);
 plot(dummy_xs, yCalc2, 'LineWidth', 2);
     % ±X
-legend(sprintf('data (%d filtered points)', length(serial_set_obs)), '1:1', ...
+legend(sprintf('data (%d points)', length(serial_set_obs)), '1:1', ...
        sprintf('slope = %.2f, intercept = %.2f\nr = %.2f', ...
                b(2), b(1), coef_r), 'Location', 'best');
 
@@ -240,5 +282,14 @@ set(findall(gcf,'type','text'), 'FontSize', 16);
 
 set(gcf, 'Renderer', 'painters', 'Position', [300 300 800 800]);
 
+fname = sprintf("%s_compare_%s_date%02d.png", figure_out_prefix, var_name, fourth_idx);
+saveas(gcf, fname);
+close(gcf);
+
+fprintf("saved to %s\n", fname);
+
 % Changelog:
+% 2022.09.28 - Average observational points over model grid instead of
+%              the other way around.
+%            - Save plots to .png consistent with other mtools.
 % 2022.09.13 - Initial version

@@ -10,9 +10,9 @@
 % Plot_ZonalMean.m
 %
 % Plot zonal mean and diffs for two sets of data.
-% (c) 2019-2021 Haipeng Lin <jimmie.lin@gmail.com>
+% (c) 2019-2022 Haipeng Lin <jimmie.lin@gmail.com>
 %
-% Version: 2021.09.15
+% Version: 2022.09.28
 % Started: 2021.09.15
 % See changelog at end of script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -30,14 +30,10 @@
 % if data is not on the same grid, they will be regridded.
 % provide coordinates in following form:
 
-coords_CESM = load('coords_CESM.mat');
-lons_left   = coords_CESM.lons;
-lats_left   = coords_CESM.lats;
-levs_left   = coords_CESM.levs;
-
-lons_right  = coords_CESM.lons;
-lats_right  = coords_CESM.lats;
-levs_right  = coords_CESM.levs;
+coords_f19 = load('mdl_coords_CESM_f19_f19_mg17.mat');
+coords_f09 = load('mdl_coords_CESM_f09_f09_mg17.mat');
+coords_left  = coords_f19;
+coords_right = coords_f19;
 
 % special data coordinate handling.
 % some data is fancy, and does not fit the m_map specs.
@@ -59,12 +55,32 @@ handling_right = "cesm-circshift";
 %       fourth_idx is /usually/ a date slice.
 %
 % 
-file = load('climo_CESM2GCYearlyMonthlyAvg_2016.mat');
-data_left = file.O3;
+fname_left  = "mdl_cesm2.1gc13.4.1_2016_monthly.mat";
+%fname_right = "mdl_cesm2.2camchem_2016_monthly.mat";
+fname_right = "mdl_cesm2.1gc13.1.2_2016_monthly.mat";
 
-file = load('climo_CAMchemYearlyMonthlyAvg_2016.mat');
-data_right = file.yearly_O3;
+var_name = "O3";
 
+file_left = load(fname_left, var_name);
+data_left = file_left.(var_name);
+file_right = load(fname_right, var_name);
+data_right = file_right.(var_name);
+
+%% non-data intensive section
+% specify data scaling properties
+%
+% usually for ozone, 1e9 to convert to ppb.
+% otherwise, 1
+convert_factor = 1e9;
+if convert_factor == 1
+    var_unit = "VMR";
+elseif convert_factor == 1e9
+    var_unit = "ppbv";
+elseif convert_factor == 1e12
+    var_unit = "pptv";
+else
+    var_unit = sprintf("%e VMR", convert_factor);
+end
 
 % specify plot properties
 %
@@ -75,10 +91,11 @@ data_right = file.yearly_O3;
 % left_name:   source of left data
 % right_name:  source of right data
 title_nice     = "2016 monthly average - %s - level %d - date slice %d";
-var_nice_name  = "O3 [ppb]";
+var_nice_name  = sprintf("%s [%s]", var_name, var_unit);
 
-left_name      = "CESM2-GC";
-right_name     = "CAM-chem";
+left_name      = "CESM2.1-GC13.4.1";
+%right_name     = "CESM2.2-CAMChem";
+right_name = "CESM2.1-GC13.1.2";
 
 % specify data indexing properties
 %
@@ -91,28 +108,39 @@ right_name     = "CAM-chem";
 % BECAUSE IT USUALLY MEANS IT IS 2-D DATA, AND FOURTH_IDX IS DATE SLICE BY
 % CONVENTION.
 third_idx =  1; % level index
-fourth_idx = 10; % date index
-
-% specify data scaling properties
-%
-% usually for ozone, 1e9 to convert to ppb.
-% otherwise, 1
-convert_factor = 1e9;
+fourth_idx = 7; % date index
 
 % specify vertical limit for plot [hPa]
 % tropopause is 70 hPa (~18km) ~ 400 hPa (~6km)
 %
 % usually, vert_top is set to 10 hPa
 % surface, vert_bottom is set to 1000 hPa
-vert_top = 10;
+vert_top = 100;
 vert_bottom = 1000;
 
 % max dynamic range
+% ozone: 10, 100, 30 [ppb]
+% OH: 0, 0.4, 0.2 [ppt]
 minDynRange = 10;
 maxDynRange = 100;
-maxDynRangeCmp = 30;
+maxDynRangeCmp = 45;
+distRatioCmp = 1;
 
 %%%%%%%%%%%%%%%%%%%%%% NO USER CONFIGURABLE CODE BELOW %%%%%%%%%%%%%%%%%%%%
+% ticks
+pressure_ticks = [vert_top, flip(vert_bottom:-100:vert_top)];
+if pressure_ticks(1) == pressure_ticks(2)
+    pressure_ticks = pressure_ticks(2:end);
+end
+
+% coords
+lons_left   = coords_left.lons;
+lats_left   = coords_left.lats;
+levs_left   = coords_left.levs;
+
+lons_right  = coords_right.lons;
+lats_right  = coords_right.lats;
+levs_right  = coords_right.levs;
 
 % auto-fix 2-D coordinates
 if size(lons_left, 2) == 1
@@ -147,6 +175,27 @@ if size(lons_right, 2) == 1
     lats_right = lats_new;
 end
 
+% Compute dynamic range for yTicks calculation.
+% Special handling if the maximum value is < 1, as there will be scaling
+if maxDynRange > 1
+    yTicksAbs = minDynRange:ceil(maxDynRange/10):maxDynRange;
+else
+    % try scale_factor that works
+    yTicks_scaleFactor = 10;
+    dynRangeTest = maxDynRange * yTicks_scaleFactor;
+    while yTicks_scaleFactor < 1e16 && dynRangeTest < 1
+        yTicks_scaleFactor = yTicks_scaleFactor * 10;
+        dynRangeTest = maxDynRange * yTicks_scaleFactor;
+    end
+    
+    if dynRangeTest < 1
+        error("Are values too small? We cannot find an appropriate scale.");
+    else
+        % settle on a scale
+        yTicksAbs = (minDynRange*yTicks_scaleFactor*10):ceil(dynRangeTest):dynRangeTest*10;
+        yTicksAbs = yTicksAbs / yTicks_scaleFactor / 10;
+    end
+end
 
 % plot zonal mean given data, lat, lev, ASSUMING RECTILINEARITY
 ax1 = subplot(1,4,1);
@@ -168,22 +217,21 @@ contourf(lats_plt, levs_plt, data_plt_zNy, linspace(minDynRange, maxDynRange, 10
 set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca,'YScale', 'log');
+caxis([minDynRange maxDynRange]);
 colorbar;
-colormap(ax1, (othercolor('BuDRd_12', 9)));
+colormap(ax1, (othercolor('YlGnBu9', 9)));
 xlabel("Latitude [deg]");
 ylabel("Pressure [hPa]");
 title(left_name);
 
 ylim([vert_top vert_bottom]); % 1 hPa is OK
-    yticks([vert_top, flip(vert_bottom:-100:vert_top)]);
-    xticks(linspace(-90, 90, 7));
+yticks(pressure_ticks);
+xticks(linspace(-90, 90, 7));
 
 set(gca, 'FontName', 'Arial');
-set(gca, 'FontWeight', 'normal');
-set(gca, 'FontSize', 14);
+set(gca, 'FontSize', 16);
 set(findall(gcf,'type','text'), 'FontName', 'Arial');
-set(findall(gcf,'type','text'), 'FontWeight', 'normal');
-set(findall(gcf,'type','text'), 'FontSize', 14);
+set(findall(gcf,'type','text'), 'FontSize', 16);
 
 
 %%%%%%%%%%
@@ -206,24 +254,23 @@ contourf(lats_plt, levs_plt, data_plt_zNy, linspace(minDynRange, maxDynRange, 10
 set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
 set(gca,'YScale', 'log');
+caxis([minDynRange maxDynRange]);
 colorbar;
-colormap(ax2, (othercolor('BuDRd_12', 9)));
+colormap(ax2, (othercolor('YlGnBu9', 9)));
 xlabel("Latitude [deg]");
-ylabel("Pressure [hPa]");
+%ylabel("Pressure [hPa]");
 title(right_name);
 
 
 ylim([vert_top vert_bottom]); % 1 hPa is OK
-    yticks([vert_top, flip(vert_bottom:-100:vert_top)]);
-    xticks(linspace(-90, 90, 7));
+yticks(pressure_ticks);
+xticks(linspace(-90, 90, 7));
 
 % Set font properties...
 set(gca, 'FontName', 'Arial');
-set(gca, 'FontWeight', 'normal');
-set(gca, 'FontSize', 14);
+set(gca, 'FontSize', 16);
 set(findall(gcf,'type','text'), 'FontName', 'Arial');
-set(findall(gcf,'type','text'), 'FontWeight', 'normal');
-set(findall(gcf,'type','text'), 'FontSize', 14);
+set(findall(gcf,'type','text'), 'FontSize', 16);
 
 
 %%%%%%%%%%%
@@ -248,12 +295,13 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
     set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca,'YScale', 'log');
-    colorbar;
+    cbrd = colorbar;
     colormap(ax2, flip(othercolor('RdBu11', 9)));
     xlabel("Latitude [deg]");
-    ylabel("Pressure [hPa]");
+    %ylabel("Pressure [hPa]");
     title("Delta [L-R]");
     
+    set(cbrd, 'YTick', round(unique([-maxDynRangeCmp:maxDynRangeCmp/4.5:0 0 maxDynRangeCmp/9:maxDynRangeCmp/4.5:maxDynRangeCmp]), 2));
     caxis([-maxDynRangeCmp maxDynRangeCmp]);
 
     ylim([vert_top vert_bottom]); % 1 hPa is OK
@@ -262,11 +310,9 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
     
     % Set font properties...
     set(gca, 'FontName', 'Arial');
-    set(gca, 'FontWeight', 'normal');
-    set(gca, 'FontSize', 14);
+    set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
-    set(findall(gcf,'type','text'), 'FontWeight', 'normal');
-    set(findall(gcf,'type','text'), 'FontSize', 14);
+    set(findall(gcf,'type','text'), 'FontSize', 16);
     
     
     ax2 = subplot(1,4,4);
@@ -284,17 +330,19 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
         levs_plt = flip(levs_plt);
     end
 
-    contourf(lats_plt, levs_plt, data_plt_zNy, linspace(0.5, 1.5, 10));
+    contourf(lats_plt, levs_plt, data_plt_zNy, linspace(1-distRatioCmp, 1+distRatioCmp, 10));
     set(gca, 'YDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca, 'XDir', 'reverse'); % ugly hack hack to get the axis labels right
     set(gca,'YScale', 'log');
-    colorbar;
-    colormap(ax2, flip(othercolor('RdBu11', 11)));
+    cbrr = colorbar;
+    colormap(ax2, flip(othercolor('RdBu11', 9)));
     xlabel("Latitude [deg]");
-    ylabel("Pressure [hPa]");
-    title("Delta [L/R]");
+    %ylabel("Pressure [hPa]");
+    title("Ratio [L/R]");
     
-    caxis([0.5 1.5]);
+    set(cbrr, 'YTick', round(unique([1-distRatioCmp:distRatioCmp/4.5:1 1 (1+distRatioCmp/9):distRatioCmp/4.5:1+distRatioCmp]), 2));
+    
+    caxis([1-distRatioCmp 1+distRatioCmp]);
 
     ylim([vert_top vert_bottom]); % 1 hPa is OK
     yticks(flip(vert_bottom:-100:vert_top));
@@ -302,11 +350,9 @@ if isequal(lats_left, lats_right) && isequal(levs_right, levs_left)
     
     % Set font properties...
     set(gca, 'FontName', 'Arial');
-    set(gca, 'FontWeight', 'normal');
-    set(gca, 'FontSize', 14);
+    set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
-    set(findall(gcf,'type','text'), 'FontWeight', 'normal');
-    set(findall(gcf,'type','text'), 'FontSize', 14);
+    set(findall(gcf,'type','text'), 'FontSize', 16);
     
     
 end
@@ -315,14 +361,12 @@ sgtitle(sprintf(title_nice, var_nice_name, third_idx, fourth_idx));
 
 % Set font properties...
 set(gca, 'FontName', 'Arial');
-set(gca, 'FontWeight', 'normal');
-set(gca, 'FontSize', 14);
+set(gca, 'FontSize', 16);
 set(findall(gcf,'type','text'), 'FontName', 'Arial');
-set(findall(gcf,'type','text'), 'FontWeight', 'normal');
-set(findall(gcf,'type','text'), 'FontSize', 14);
+set(findall(gcf,'type','text'), 'FontSize', 16);
 
 % Set printing properties
 %set(gcf, 'PaperUnits', 'inches', 'PaperPosition', [0 0 12 10]);
 %set(gcf, 'Renderer', 'painters', 'Position', [90 90 1800 500])
 
-set(gcf, 'Renderer', 'painters', 'Position', [600 800 1900 580]);
+set(gcf, 'Renderer', 'painters', 'Position', [600 800 2100 580]);

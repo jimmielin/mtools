@@ -27,51 +27,61 @@
 % See changelog at end of script
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-addpath("/usr/local/MATLAB/R2021b/toolbox/m_map");
+matlab_root = '/usr/local/MATLAB/R2022b';
+
+addpath(strcat(matlab_root, "/toolbox/m_map"));
+addpath(strcat(matlab_root, "/toolbox/othercolor"));
+
+addpath('./mtools_shared_libs');
 
 %% data source configuration
 % specify data coordinates. provide the "load" handle to the rest of the
 % routines
-coords_f19 = load('mdl_coords_CESM_f19_f19_mg17.mat');
 coords_f09 = load('mdl_coords_CESM_f09_f09_mg17.mat');
-coords_left = coords_f19;
-coords_right = coords_f19;
-%coords_right= coords_f09;
+coords_left = coords_f09;
+coords_right= coords_f09;
 
-fname_left  = "mdl_cesm2.1gc13.4.1_2016_monthly.mat";
-%fname_right = "mdl_cesm2.2camchem_2016_monthly.mat";
-fname_right = "mdl_cesm2.1gc13.1.2_2016_monthly.mat";
+left_name   = "cesm2.0spinupdata_2016";
+%left_name   = "cesm2.2camchem_nudged_ts2_2016";
+right_name  = "cesm2.2camchem_nudged_nocloud_2016";
+%right_name   = "cesm2.3gc14.0.0_nudged_noaer_2016";
+
+fname_left  = sprintf("mdl_%s_monthly.mat", left_name);
+fname_right = sprintf("mdl_%s_monthly.mat", right_name);
 
 file_left   = load(fname_left);
 file_right  = load(fname_right);
 
-left_name      = "CESM2.1-GC13.4.1";
-%right_name     = "CESM2.2-CAMChem";
-right_name = "CESM2.1-GC13.1.2";
-
 % now also have a reference model output
-fname_reference = "mdl_ref_gc_benchmark/mdl_ref_gc_benchmark_13.4.0rc.4-tropstrat-201907.mat";
-load(fname_reference, "mdl_ref_sum_map");
+%fname_reference = "mdl_ref_gc_benchmark/mdl_ref_gc_benchmark_13.4.0rc.4-strat-201904.mat";
+%load(fname_reference, "mdl_ref_sum_map");
+fname_reference = "mdl_ref_gc_benchmark/mdl_ref_gc_benchmark_13.4.0rc.4-strat-201901.mat";
+%load(fname_reference, "mdl_ref_sum_map");
+mdl_ref_sum_map = containers.Map;
 
 %% data processing configuration (separated into section for ease of use)
 % specify data indexing properties
 %
 % fourth_idx: usually date slice.
 % if this is monthly data (indexed 1:12), set to -1 for a yearly average.
-fourth_idx = 7; % date index
+fourth_idx = 1; % date index
 
-% specify minimum / maximum pressure properties
-%         set ---                 minimum prs.        maximum prs. [Pa]
-% for 100 hPa and above:            -999                 10 000
-% for below 100 hPa    :           10 000               999 999
-% for whole atm        :           
-minPrsAtEdge = -999;
-maxPrsAtEdge = 999999;
+% lm_range_option: manual|trop|strat
+% specify LM range (LM_left_range, LM_right_range), or use model tropopause level for trop|strat.
+lm_range_option = "manual";
 
 LM_left  = size(coords_left.hyam, 1);
 LM_right = size(coords_right.hyam, 1);
 LM_left_range   = 1:LM_left;
 LM_right_range  = 1:LM_right;
+
+% 35 = 100 hPa, 31 = 200 hPa, 23 = 500 hPa (56 levels)
+% 22 = 100 hPa, 18 = 200 hPa, 12 = 500 hPa (32 levels - new MUSICA)
+%LM_left_range = 18:32;
+%LM_right_range = 18:32;
+% 
+% LM_left_range = 32:56;
+% LM_right_range = 32:56;
 
 % figure output location (no trailing underscore needed)
 figure_out_prefix = sprintf("out_figures/%s_%s_2016", left_name, right_name);
@@ -79,16 +89,24 @@ figure_out_prefix = sprintf("out_figures/%s_%s_2016", left_name, right_name);
 % species to compare.
 spec_list = ["NOx", "NOy", "OH", "CH2O", "CO", "BrO", "ClO", "Cl", ...
               "HCl", "HBr", "HOCl", "HOBr", "CH3Cl", "BrCl", ... %"BrNO3", "ClNO3", ...
-              "HO2", "H2O2", "CH4", "PM25", "O3", ...
+              "HO2", "H2O2", "H2O", "CH4", "PM25", "O3", ...
               "SO2", "SO4", ...
               "NO", "NO2", "PAN", "HNO3", "NO3", "N2O", "N2O5", ... %"HNO4", ...
               "MOH", "EOH", "ALD2", "C3H8", "DMS", "ACET", "MEK", "MVK", "TOLU", "MACR", "ALK4", "ISOP", ...
-              "BCPI", "BCPO", "OCPI", "OCPO"];
+              "BCPI", "BCPO", "OCPI", "OCPO", "so4_a1", "so4_a2", "so4_a3", "num_a1", "num_a2", "num_a3"];
+
+spec_list = ["num_a1", "num_a2", "num_a3", "BCPI", "BCPO", "OCPI", "OCPO", "SO4", "so4_a1", "so4_a2", "so4_a3", "dst_a1", "dst_a2", "dst_a3", ...
+             "ncl_a1", "ncl_a2", "ncl_a3"];
 % simplified old list:
-spec_list = ["BrO", "CH2O", "CH3Cl", "CH4", "ClO", "CO", "HCl", "HO2", "HOCl", "ISOP", "N2O", "NO", "NO2", "O3", "OH", "PAN", "SO2"];
+% spec_list = ["BrO", "CH2O", "CH3Cl", "CH4", "ClO", "CO", "HCl", "HO2", "HOCl", "ISOP", "N2O", "NO", "NO2", "O3", "OH", "PAN", "SO2"];
+
+% spec_list = ["ISOP"];
 
 % omi_mls mode: all|trop|strat
 omi_mls_mode = "all";
+if lm_range_option ~= "manual"
+    omi_mls_mode = lm_range_option;
+end
 
 %%%%%%%%%%%%%%%%%%%%%% NO USER CONFIGURABLE CODE BELOW %%%%%%%%%%%%%%%%%%%%
 % read the coordinate data into separate vars, as necessary
@@ -154,44 +172,11 @@ end
 area_m2_left = area_m2_calc(lons_left, lats_left);
 area_m2_right = area_m2_calc(lons_right, lats_right);
 
-% Test Area_M2 if necessary
-% for CESM processing - if lons are at 0.0 to 360.0, need to transpose data
-% into -180.0, 180.0. check
-% if max(lons_left) > 180.0
-%    area_m2_left = circshift(area_m2_left, ...
-%                  size(lons_left, 1)/2, ...
-%                  1); % data needs to be in (lat, lon) 
-% 
-%    lons_left = lons_left - 180.0;
-% 
-%    fprintf("cesm-circshift: shifted data_left, lons_left\n");
-% end
-% 
-% axg = subplot_tight(1,2,1);
-% m_proj('miller', 'long',[-180.0 180.0], 'lat', [-87.5 87.5]);
-% 
-% m_pcolor(lons_left, lats_left, area_m2_left);
-% colorbar;
-% 
-% m_plotbndry('/usr/local/MATLAB/R2021a/toolbox/boundary/world', ...
-%     'color', 'k', 'linewidth', 1.5) % range lon is -180.0 180.0 so correct
-% m_grid;
-% 
-% t = title("Area M2 test (left) [m^2]");
-% 
-% axg = subplot_tight(1,2,2);
-% m_proj('miller', ...
-%        'long',[-180.0 180.0], ...
-%        'lat', [-87.5 87.5]);
-% 
-% m_pcolor(lons_right, lats_right, area_m2_right);
-% colorbar;
-% 
-% m_plotbndry('/usr/local/MATLAB/R2021a/toolbox/boundary/world', ...
-%     'color', 'k', 'linewidth', 1.5) % range lon is -180.0 180.0 so correct
-% m_grid;
-% 
-% t = title("Area M2 test (right) [m^2]");
+IM_left = size(file_left.PSFC, 1);
+JM_left = size(file_left.PSFC, 2);
+
+IM_right = size(file_right.PSFC, 1);
+JM_right = size(file_right.PSFC, 2);
 
 % convert MMR to VMR
 % VMR = 28.9644 / molar_mass * MMR
@@ -200,58 +185,7 @@ area_m2_right = area_m2_calc(lons_right, lats_right);
 % note that CESM data is in VMR (mol/mol), not ppmv, so to ppm scale by 1e6
 %
 % a hack for a molar mass table ...
-molarTable = containers.Map;
-molarTable('ACET') = 58.09;
-molarTable('ALD2') = 44.06;
-molarTable('ALK4') = 58.12;
-molarTable('BrO') = 95.904;
-molarTable('BrCl') = 115.45;
-molarTable('BrNO3') = 141.91;
-molarTable('C3H8') = 44.11;
-molarTable('CH2O') = 30.031;
-molarTable('CH3Cl') = 50.49;
-molarTable('CH4') = 16.04;
-molarTable('Cl') = 35.45;
-molarTable('ClNO3') = 97.45;
-molarTable('ClO') = 51.4521;
-molarTable('CO') = 28.01;
-molarTable('DMS') = 62.13;
-molarTable('EOH') = 46.07;
-molarTable('H2O2') = 34.02;
-molarTable('HBr') = 80.91;
-molarTable('HCl') = 36.458;
-molarTable('HNO3') = 63.01;
-molarTable('HNO4') = 79.01;
-molarTable('HO2') = 33.01;
-molarTable('HOBr') = 96.91;
-molarTable('HOCl') = 52.49;
-molarTable('ISOP') = 68.12;
-molarTable('MACR') = 70.10;
-molarTable('MEK') = 72.11;
-molarTable('MOH') = 32.05;
-molarTable('MVK') = 70.09;
-molarTable('N2O') = 44.013;
-molarTable('N2O5') = 108.02;
-molarTable('NO') = 30.01;
-molarTable('NO2') = 46.0055;
-molarTable('NO3') = 62.01;
-molarTable('O3') = 48.00;
-molarTable('OH') = 17.008;
-molarTable('PAN') = 121.05;
-molarTable('RCHO') = 58.09;
-molarTable('SO2') = 64.066;
-molarTable('SO4') = 96.06;
-molarTable('TOLU') = 92.15;
-molarTable('XYLE') = 106.18;
-
-% dummies:
-molarTable('BCPI') = 12.01;
-molarTable('BCPO') = 12.01;
-molarTable('OCPI') = 12.01;
-molarTable('OCPO') = 12.01;
-molarTable('NOx') = 1.00;
-molarTable('NOy') = 1.00;
-molarTable('PM25') = 1.00;
+molarTable = load("./mtools_shared_libs/molarTable.mat").molarTable;
 
 % species specific code below. do loop
 % sum species by multiplying [kg] in grid box by MMR
@@ -262,7 +196,7 @@ if fourth_idx > 0
     psfc_right = file_right.PSFC(:,:,fourth_idx);
     
     % compute PEDGE
-    pedge_left = pedge_calc(coords_left.hyai, coords_left.hybi, psfc_left);
+    pedge_left  = pedge_calc(coords_left.hyai, coords_left.hybi, psfc_left);
     pedge_right = pedge_calc(coords_right.hyai, coords_right.hybi, psfc_right);
 
     % compute DELP_DRY, which is just dry pedge deltas
@@ -275,12 +209,6 @@ if fourth_idx > 0
 elseif fourth_idx == -1
     % if computing yearly average, all data needs to be computed for all 12
     % months.
-    IM_left = size(file_left.PSFC, 1);
-    JM_left = size(file_right.PSFC, 2);
-    
-    IM_right = size(file_left.PSFC, 1);
-    JM_right = size(file_right.PSFC, 2);
-    
     pedge_left = zeros(IM_left, JM_left, LM_left+1, 12);
     pedge_right = zeros(IM_right, JM_right, LM_right+1, 12);
     
@@ -302,51 +230,77 @@ elseif fourth_idx == -1
        AD_right(:,:,:,mo) = ad_calc(delp_dry_right(:,:,:,mo), area_m2_right);
     end
 end
-% if max(lons_left) > 180.0
-%    psfc_left = circshift(psfc_left, ...
-%                  size(lons_left, 1)/2, ...
-%                  1); % data needs to be in (lat, lon) 
-% 
-%    lons_left = lons_left - 180.0;
-% 
-%    fprintf("cesm-circshift: shifted data_left, lons_left\n");
-% end
-% m_proj('miller', 'long',[-180.0 180.0], 'lat', [-87.5 87.5]);
-% m_pcolor(lons_left, lats_left, psfc_left);
-% colorbar;
-% m_plotbndry('/usr/local/MATLAB/R2021a/toolbox/boundary/world', ...
-%     'color', 'k', 'linewidth', 1.5) % range lon is -180.0 180.0 so correct
-% m_grid;
 
-fprintf("Global Mass: Time slice %d \t\t LM_left: %d:%d (~%.2f to %.2f hPa) \t\t LM_right: %d:%d (~%.2f to %.2f hPa)\n", fourth_idx, ...
-        LM_left_range(1), LM_left_range(end), mean(pedge_left(:,:,LM_left_range(1)),'all')/100, mean(pedge_left(:,:,LM_left_range(end))/100,'all'), ...
-        LM_right_range(1), LM_right_range(end), mean(pedge_right(:,:,LM_right_range(1)),'all')/100, mean(pedge_right(:,:,LM_right_range(end))/100,'all'));
+if lm_range_option == "manual"
+    fprintf("Global Mass: Time slice %d \t\t LM_left: %d:%d (~%.2f to %.2f hPa) \t\t LM_right: %d:%d (~%.2f to %.2f hPa)\n", fourth_idx, ...
+            LM_left_range(1), LM_left_range(end), mean(pedge_left(:,:,LM_left_range(1)),'all')/100, mean(pedge_left(:,:,LM_left_range(end))/100,'all'), ...
+            LM_right_range(1), LM_right_range(end), mean(pedge_right(:,:,LM_right_range(1)),'all')/100, mean(pedge_right(:,:,LM_right_range(end))/100,'all'));
+else
+    fprintf("Global Mass: Time slice %d \t\t Range_option: %s\n", fourth_idx, lm_range_option);
+end
 fprintf("Reference model: %s\n", fname_reference);
 fprintf("Total Mass [Gg]        %-15s         %-15s\n", left_name, right_name);
 fprintf("Species                Left_Model               Right_Model             %s diff (L-R)          Reference_Model\n", '%')
 fprintf("--------------------------------------------------------------------------------------------------------------\n")
 for idx = 1:size(spec_list, 2)
-    % zero
-    Msum_l   = 0.0;
-    Msum_r   = 0.0;
-
     % check if magic is required. e.g., special handling is performed for
     % SO4 if not present, where it is replaced with so4_a1+so4_a2+so4_a3;
+    % (+h2so4)
     %
-    % fixme: should actually +H2SO4 as well
+    % note that so4_a1, so4_a2, so4_a3 are received in mass concentrations
+    % (kg/kg) and not mol/mol like the rest.
+    % thus, when converting to SO4, MMR to VMR has to be performed
+    % as well, using
+    %
+    % VMR = 28.9644 / molarTable('SO4') * MMR
     is_fallback_left = 0;
     is_fallback_right = 0;
     if spec_list(idx) == 'SO4'
         if ~isfield(file_left, 'SO4') && isfield(file_left, 'so4_a1')
-            spec_current_left  = file_left.so4_a1 + file_left.so4_a2 + file_left.so4_a3;
+            spec_current_left  = (file_left.so4_a1 / molarTable('so4_a1') + ...
+                                  file_left.so4_a2 / molarTable('so4_a2') + ...
+                                  file_left.so4_a3 / molarTable('so4_a3') + ...
+                                  file_left.H2SO4  / molarTable('H2SO4' )) * molarTable('SO4'); % ...in MMR
+            spec_current_left  = spec_current_left * 28.9644 / molarTable('SO4');               % to VMR. I know redundant
             is_fallback_left = 1;
         end
 
         if ~isfield(file_right, 'SO4') && isfield(file_right, 'so4_a1')
-            spec_current_right  = file_right.so4_a1 + file_right.so4_a2 + file_right.so4_a3;
+            %spec_current_right  = (file_right.so4_a1 / molarTable('so4_a1') + ...
+            %                       file_right.so4_a2 / molarTable('so4_a2') + ...
+            %                       file_right.so4_a3 / molarTable('so4_a3') + ...
+            %                       file_right.h2so4  / molarTable('h2so4' )) * molarTable('SO4');
+            spec_current_right  = (file_right.so4_a1 / molarTable('so4_a1') + ...
+                                   file_right.so4_a2 / molarTable('so4_a2') + ...
+                                   file_right.so4_a3 / molarTable('so4_a3')) * molarTable('SO4'); % ...in MMR
+            spec_current_right  = spec_current_right * 28.9644 / molarTable('SO4');               % to VMR. I know redundant
             is_fallback_right = 1;
         end
     end
+
+    if spec_list(idx) == 'dst_a3'
+        spec_current_left  = file_left.DST4;
+        spec_current_right = file_right.DST4;
+        is_fallback_left = 1;
+        is_fallback_right = 1;
+    end
+
+    if spec_list(idx) == 'BCPI' && ~isfield(file_left, 'BCPI')
+        spec_current_left = file_left.bc_a1; is_fallback_left = 1;
+    end
+
+    if spec_list(idx) == 'BCPO' && ~isfield(file_left, 'BCPO')
+        spec_current_left = file_left.bc_a4; is_fallback_left = 1;
+    end
+
+    if spec_list(idx) == 'OCPI' && ~isfield(file_left, 'OCPI')
+        spec_current_left = file_left.pom_a1; is_fallback_left = 1;
+    end
+
+    if spec_list(idx) == 'OCPO' && ~isfield(file_left, 'OCPO')
+        spec_current_left = file_left.pom_a4; is_fallback_left = 1;
+    end
+
 
     % spec_current_left, spec_current_right
     if ~is_fallback_left
@@ -359,36 +313,46 @@ for idx = 1:size(spec_list, 2)
     % spec_list(idx)
     MW = molarTable(spec_list(idx));
     VMRtoMMR = MW / 28.9644;
-    
-    for L = LM_left_range
-    %for L = 1:LM_left
-        % sum by levels ..                 vv note this is element-wise mult.
-        if fourth_idx > 0
-            by_layer = sum(sum(AD_left(:,:,L) .* spec_current_left(:,:,L,fourth_idx) * VMRtoMMR));
-        elseif fourth_idx == -1 % assuming fourth_idx spans from 1:12 ... yearly sum
-            by_layer = 0; % accum.
-            for mo = 1:12
-                by_layer = by_layer + sum(sum(AD_left(:,:,L,mo) .* spec_current_left(:,:,L,mo) / 12 * VMRtoMMR));
-            end
+
+    % note that the aerosol species are already in MMR and thus
+    % do not need this conversion. hplin 1/16/23
+    if strlength(spec_list(idx)) > 3
+        checkAerSubstring = extractAfter(spec_list(idx), 3);
+        if checkAerSubstring == '_a1' || checkAerSubstring == '_a2' || checkAerSubstring == '_a3' || checkAerSubstring == '_a4' 
+            VMRtoMMR = 1.0;
+            % fprintf("skipping vmr to mmr for %s\n", spec_list(idx))
         end
-        Msum_l = Msum_l + by_layer;
-        %fprintf("=> [L] spc %s, L = %d, AD = %4.4e, v/v = %8.6e, m = %8.6f Gg\n", spec_list(idx), L, AD_left(25,25,L), spec_current_left(25,25,L,fourth_idx), by_layer/1e6);
-    end
-   
-    for L = LM_right_range
-    %for L = 1:LM_right
-        % sum by levels ..                  vv note this is element-wise mult.
-        if fourth_idx > 0
-            by_layer = sum(sum(AD_right(:,:,L) .* spec_current_right(:,:,L,fourth_idx) * VMRtoMMR));
-        elseif fourth_idx == -1 % assuming fourth_idx spans from 1:12 ... yearly sum
-            by_layer = 0; % accum.
-            for mo = 1:12
-                by_layer = by_layer + sum(sum(AD_right(:,:,L,mo) .* spec_current_right(:,:,L,mo) / 12 * VMRtoMMR));
-            end
+    end % hack hack
+
+    % are we using manual LM range? in any way, create dummy variables to
+    % pass into the function.
+    if lm_range_option == "manual"
+        % nothing needs to be done here. but create a dummy
+        lm_range_finder = "none";
+        TropLev_left  = zeros(IM_left, JM_left);
+        TropLev_right = zeros(IM_right, JM_right);
+    else
+        % gets a little tricky here. loop by I, J
+        if isfield(file_left, 'TropLev') && isfield(file_right, 'TropLev')
+            TropLev_left = file_left.TropLev;
+            TropLev_right = file_right.TropLev;
+        elseif isfield(file_left, 'TROPP_P') && isfield(file_right, 'TROPP_P')
+            % pressure only? use alternate method
+            % now compute the pressure level to trop level conversion...
+            TropLev_left = TropLevFromTROPP(fourth_idx, IM_left, JM_left, LM_left, pedge_left, file_left.TROPP_P);
+            TropLev_left = TropLevFromTROPP(fourth_idx, IM_right, JM_right, LM_right, pedge_right, file_right.TROPP_P);
+        else
+            error("Cannot find field TropLev in file_left or file_right - must be present!")
         end
-        Msum_r = Msum_r + by_layer;
-        %fprintf("=> [R] spc %s, L = %d, v/v = %8.6e, m = %8.6f Gg\n", spec_list(idx), L, vv, by_layer/1e6);
     end
+
+    % calculate Msum_l, Msum_r
+    Msum_l = Msum_calc(spec_current_left, AD_left, pedge_left, VMRtoMMR, ...
+                       IM_left, JM_left, LM_left, fourth_idx, ...
+                       lm_range_option, LM_left_range, TropLev_left);
+    Msum_r = Msum_calc(spec_current_right, AD_right, pedge_right, VMRtoMMR, ...
+                       IM_right, JM_right, LM_right, fourth_idx, ...
+                       lm_range_option, LM_right_range, TropLev_right);
 
     % fprintf("Column sums L = %.6f Gg, R = %.6f Gg\n", Msum_l/1e6, Msum_r/1e6)
     spc_name_nice = spec_list(idx);
@@ -411,7 +375,15 @@ for idx = 1:size(spec_list, 2)
         reference = mdl_ref_sum_map(spec_list(idx));
     end
 
-    fprintf("%-12s           %-8.6f  \t\t%-8.6f \t\t%+8.3f %s\t\t%-8.6f\n", spc_name_nice, Msum_l/1e6, Msum_r/1e6, pct_diff, extra, reference)
+    Msum_l_Gg = Msum_l/1e6;
+    Msum_r_Gg = Msum_r/1e6;
+    if Msum_l_Gg > 1e12
+        fprintf("%-12s           %-8.4e  \t\t%-8.4e \t\t%+8.3f %s\n", spc_name_nice, Msum_l_Gg, Msum_r_Gg, pct_diff, extra)
+    elseif spc_name_nice == "H2O"
+        fprintf("%-12s           %-8.0f  \t\t%-8.0f \t\t%+8.3f %s\t\t%-8.0f\n", spc_name_nice, Msum_l_Gg, Msum_r_Gg, pct_diff, extra, reference)
+    else
+        fprintf("%-12s           %-8.6f  \t\t%-8.6f \t\t%+8.3f %s\t\t%-8.6f\n", spc_name_nice, Msum_l_Gg, Msum_r_Gg, pct_diff, extra, reference)
+    end
 end
 
 %% calculate ozone column value and plot (against climatology?)
@@ -420,7 +392,7 @@ end
 % directory
 %
 % omi_mls_trop_column_ozone_5x5.mat
-if isfield(file_left, 'O3') && isfield(file_right, 'O3')
+if sum(ismember(spec_list, "O3")) > 0
     fprintf("=> Also showing ozone column plot... mode = %s\n", omi_mls_mode);
     
     omi_trop = load("obs_omi_mls/omi_mls_climatology_trop_column_ozone_5x5.mat");
@@ -491,7 +463,7 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
         LM_right_s = 1; LM_right_e = LM_right;
 
         omimls_o3_range = [150, 450];
-        omimls_o3_delta_range = [-45, 45];
+        omimls_o3_delta_range = [-15, 15];
     end
 
     for L = LM_left_s:LM_left_e
@@ -555,12 +527,12 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(left_name));
+    t = title(sprintf(left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -578,12 +550,12 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(right_name));
+    t = title(sprintf(right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -602,7 +574,7 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
@@ -658,12 +630,12 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - OMI/MLS Climo", left_name));
+    t = title(sprintf("%s - OMI/MLS Climo", left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -681,12 +653,12 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - OMI/MLS Climo", right_name));
+    t = title(sprintf("%s - OMI/MLS Climo", right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -704,12 +676,12 @@ if isfield(file_left, 'O3') && isfield(file_right, 'O3')
     colorbar('southoutside');
     caxis(omimls_o3_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name));
+    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name), 'Interpreter', 'none');
     
     sgtitle(sprintf("O3 column [DU] - date slice %d", fourth_idx));
 
@@ -730,7 +702,7 @@ end
 % directory
 %
 % omi_mls_trop_column_ozone_5x5.mat
-if isfield(file_left, 'CO') && isfield(file_right, 'CO')
+if sum(ismember(spec_list, "CO")) > 0
     fprintf("=> Also showing MOPITT CO column density plot...\n");
 
     mopitt_co_range = [0, 30e17];
@@ -854,12 +826,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(left_name));
+    t = title(sprintf(left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -877,12 +849,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(right_name));
+    t = title(sprintf(right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -901,7 +873,7 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
@@ -931,12 +903,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - MOPITT Col", left_name));
+    t = title(sprintf("%s - MOPITT Col", left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -955,12 +927,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     caxis(mopitt_co_delta_range);
 
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - MOPITT Col", right_name));
+    t = title(sprintf("%s - MOPITT Col", right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -978,12 +950,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name));
+    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name), 'Interpreter', 'none');
     
     sgtitle(sprintf("CO column density [molec cm^{-2}] - date slice %d", fourth_idx));
 
@@ -1056,12 +1028,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(left_name));
+    t = title(sprintf(left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -1079,12 +1051,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
 
-    t = title(sprintf(right_name));
+    t = title(sprintf(right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -1103,7 +1075,7 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('Spectral6', 12)));
@@ -1133,12 +1105,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - MOPITT Surface VMR", left_name));
+    t = title(sprintf("%s - MOPITT Surface VMR", left_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -1157,12 +1129,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     caxis(mopitt_co_delta_range);
 
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - MOPITT Surface VMR", right_name));
+    t = title(sprintf("%s - MOPITT Surface VMR", right_name), 'Interpreter', 'none');
     set(gca, 'FontName', 'Arial');
     set(gca, 'FontSize', 16);
     set(findall(gcf,'type','text'), 'FontName', 'Arial');
@@ -1180,12 +1152,12 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     colorbar('southoutside');
     caxis(mopitt_co_delta_range);
 
-    m_plotbndry('/usr/local/MATLAB/R2021b/toolbox/boundary/world', ...
+    m_plotbndry(strcat(matlab_root, '/toolbox/boundary/world'), ...
         'color', 'k', 'linewidth', 1.5)
     m_grid;
     colormap(axg, flip(othercolor('RdBu11', 9)));
 
-    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name));
+    t = title(sprintf("%s - %s (Diff L-R)", left_name, right_name), 'Interpreter', 'none');
     
     sgtitle(sprintf("CO surface conc [ppbv] - date slice %d", fourth_idx));
 
@@ -1200,156 +1172,11 @@ if isfield(file_left, 'CO') && isfield(file_right, 'CO')
     close(gcf);
 end
 
-%%%%%%%%%%%%%%%%%%%%%% GENERIC UTILITIES CODE BELOW %%%%%%%%%%%%%%%%%%%%
-
-% Routine utilities for computing air quantities
-% ported from the WRF-GC coupler, GEOS-Chem gc_grid_mod.F90,
-% GEOS-Chem calc_met_mod.F90, among others
-% (hplin, 9/26/21)
-
-% AD: calculates air mass for each level
-% dry air mass [kg]
-function AD = ad_calc(DELP_DRY, AREA_M2)
-    % from physconstants.F90 (G-C)
-    G0 = 9.80665;
-    % G0_100 = 100.0 / G0;
-    
-    IM = size(DELP_DRY, 1);
-    JM = size(DELP_DRY, 2);
-    LM = size(DELP_DRY, 3);
-    
-    AD = zeros(IM, JM, LM);
-    for L = 1:LM
-        %            note element-wise mult vv
-        AD(:,:,L) = DELP_DRY(:,:,L) .* AREA_M2(:,:) / G0; % [Pa] calc.
-        % if using [hPa], need to use G0_100 like in G-C
-    end
-end
-
-% pedge: calculates EDGE pressure levels given hyai, hybi, PSFC
-% for the entire grid. [Pa]
-function pedge = pedge_calc(hyai, hybi, PSFC)
-    % sizes
-    IM = size(PSFC, 1);
-    JM = size(PSFC, 2);
-    LM = size(hyai, 1) - 1;
-    %DT = size(PSFC, 3);
-    
-    % assumes PSFC is in [Pa] (but outputs just follow PSFC units anyway)
-    % if you want to use this for delp_dry calc and AD (kg) calc though
-    % must give Pa
-    % pedge = zeros(IM, JM, LM+1, DT);
-    pedge = zeros(IM, JM, LM+1);
-    
-    fprintf("\n=> Computing PEDGE ... IM=%d,JM=%d,LM=%d\n",IM,JM,LM)
-    
-    %for T = 1:DT
-    for L = 1:LM+1
-        % pedge(:,:,L,T) = hyai(L) + hybi(L) .* PSFC(:,:,T);
-        
-        % GEOS-Chem format
-        %pedge(:,:,L) = hyai(L) + (hybi(L) * PSFC(:,:));
-        
-        % CAM-chem format https://www.ncl.ucar.edu/Document/Functions/Built-in/pres_hybrid_ccm.shtml
-        pedge(:,:,L) = hyai(L) * 100000.0 + hybi(L) * PSFC(:,:);
-    end
-    %end
-end
-
-% delp_dry: give PEDGE_DRY, returns deltas for each grid box.
-function delp_dry = delp_dry_calc(PEDGE)
-    IM = size(PEDGE, 1);
-    JM = size(PEDGE, 2);
-    LM = size(PEDGE, 3) - 1;
-    
-    delp_dry = zeros(IM, JM, LM);
-    for L = 1:LM
-        delp_dry(:,:,L) = PEDGE(:,:,L) - PEDGE(:,:,L+1);
-    end
-end
-
-% bxheight_approx: gives approximation of box height [m] for each
-% grid box. this is an approximation because we do not use
-% moist air in this calculation, instead assuming q = 0.
-% virtual temperature should be used instead, but Q/H2O is not always
-% available.
-function bxheight_approx = bxheight_approx(T, PEDGE)
-    IM = size(PEDGE, 1);
-    JM = size(PEDGE, 2);
-    LM = size(PEDGE, 3) - 1;
-
-    bxheight_approx = zeros(IM, JM, LM);
-    for L = 1:LM
-        bxheight_approx(:,:,L) = (287.0 / 9.80665) * T(:,:,L) .* log(PEDGE(:,:,L) ./ PEDGE(:,:,L+1));
-    end
-end
-
-% area_m2: calculates M2 area of grid box given CENTER lons, lats
-% which have been expanded to 2-D sizes lons=lats=(IM,JM)
-%
-% assumes CENTER because that is what we work with out of COARDS/CF
-% conventions. cf. https://cfconventions.org/cf-conventions/cf-conventions.html
-% "Bounds for 2-D coordinate variables with 4-sided cells"
-%
-% currently only works on cartesian grid.
-%
-% assumes lats are from south to north
-function area_m2 = area_m2_calc(lons, lats)
-    % Re: Radius of Earth [m]
-    Re = 6.3710072e6;
-    
-    % assuming these are center quantities.
-    IM = size(lons, 1);
-    JM = size(lats, 2);
-    
-    % create area_m2:
-    % fixme: may not be exactly accurate for curvilinear 
-    % due to the calculation of dx is
-    % based on adjacent center cells.
-    area_m2 = zeros(IM, JM);
-    
-    % loop over the grid
-    for J = 1:JM
-        for I = 1:IM
-            % compute the edge radian of the y-coordinate to north and
-            % south. given the centers, we can do 1/2
-            %if lons(I,J) == 90.0
-            %    YEdgeRad_N = pi/2;
-            %elseif lons(I,J) == -90.0
-            %    YEdgeRad_N = -pi/2;
-            %else
-           if J == 1
-               YEdge_N = (lats(I,J+1) + lats(I,J))/2;
-               YEdge_S = -90.0;
-           elseif J == JM
-               YEdge_N =  90.0;
-               YEdge_S = (lats(I,J-1) + lats(I,J))/2;
-           else
-               YEdge_N = (lats(I,J+1) + lats(I,J))/2;
-               YEdge_S = (lats(I,J-1) + lats(I,J))/2;
-           end
-           
-           YEdgeRad_N = YEdge_N * pi / 180;
-           YEdgeRad_S = YEdge_S * pi / 180;
-           
-           YEdgeSin_N = sin(YEdgeRad_N);
-           YEdgeSin_S = sin(YEdgeRad_S);
-           
-           % get adjacent grid box dx (assuming rectilinearity here...)
-           if I ~= IM
-               DX = lons(I+1,J) - lons(I,J);
-           else
-               DX = lons(I,J)   - lons(I-1,J);
-           end
-           
-           area_m2(I,J) = (DX * pi / 180) * (Re^2) * (YEdgeSin_N - YEdgeSin_S);
-        end
-    end
-    
-
-end
-
 % Changelog:
 % 2022.09.15 - Quality of life improvements. Allow reference_model to read
 % already computed data for comparison.
-%
+% 2023.01.16 - Fixed the fact that aerosols are in MMR and thus need to be
+% handled differently when computing total budgets.
+% 2023.01.27 - Now uses mtools_shared_libs
+% 2023.02.05 - Cleanup code. Most logic moved to mtools_shared_libs, except
+% for plotting routines.
